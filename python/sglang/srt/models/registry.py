@@ -93,6 +93,12 @@ def import_model_classes():
                     ), f"Duplicated model implementation for {entry.__name__}"
                     model_arch_name_to_cls[entry.__name__] = entry
 
+    try:
+        module = importlib.import_module("sglang.FastSeek.deepseek_v3")
+        entry = module.EntryClass
+        model_arch_name_to_cls[entry.__name__] = entry
+    except Exception as e:
+        logger.warning(f"Ignore import error when loading {name}. " f"{e}")  
     return model_arch_name_to_cls
 
 
