@@ -10,3 +10,6 @@
 [submodule "sgl-kernel/3rdparty/deepgemm"]
 	path = sgl-kernel/3rdparty/deepgemm
 	url = https://github.com/deepseek-ai/DeepGEMM
+[submodule "python/sglang/FastSeek/3rd/cutlass"]
+	path = python/sglang/FastSeek/3rd/cutlass
+	url = https://github.com/NVIDIA/cutlass.git
