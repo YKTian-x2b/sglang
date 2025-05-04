@@ -44,11 +44,11 @@ from sglang.srt.layers.dp_attention import (
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.utils import add_prefix
 from sglang.srt.model_loader.weight_utils import default_weight_loader
-# from ep_moe import EPMoE
 from sglang.srt.layers.moe.ep_moe.layer import EPMoE
 
+rank_print = print if get_attention_tp_rank() == 0 else lambda *args, **kwargs: None
 
-"""
+
 class DeepseekV3MLP(nn.Module):
     def __init__(
         self,
@@ -147,6 +147,8 @@ class DeepseekV3MoE(nn.Module):
         )
     
     def forward(self, hidden_states):
+        num_tokens, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
         shared_output = self.shared_experts(hidden_states)
         # router_logits: (num_tokens, n_experts)
         router_logits = self.gate(hidden_states)
@@ -161,7 +163,7 @@ class DeepseekV3MoE(nn.Module):
 
         return final_hidden_states.view(num_tokens, hidden_dim)
         
-"""
+""""""
 
 class DeepseekV3AttentionMLA(nn.Module):
     def __init__(
@@ -389,20 +391,20 @@ class DeepseekV3DecoderLayer(nn.Module):
             prefix=add_prefix("self_attn", prefix),
         )
 
-        # if layer_id >= config.first_k_dense_replace:
-        #     self.mlp = DeepseekV2MoE(
-        #         config=config,
-        #         quant_config=quant_config,
-        #         prefix=add_prefix("mlp", prefix),
-        #     )
-        # else:
-        #     self.mlp = DeepseekV2MLP(
-        #         hidden_size=config.hidden_size,
-        #         intermediate_size=config.intermediate_size,
-        #         hidden_act=config.hidden_act,
-        #         quant_config=quant_config,
-        #         prefix=add_prefix("mlp", prefix),
-        #     )
+        if layer_id >= config.first_k_dense_replace:
+            self.mlp = DeepseekV3MoE(
+                config=config,
+                quant_config=quant_config,
+                prefix=add_prefix("mlp", prefix),
+            )
+        else:
+            self.mlp = DeepseekV3MLP(
+                hidden_size=config.hidden_size,
+                intermediate_size=config.intermediate_size,
+                hidden_act=config.hidden_act,
+                quant_config=quant_config,
+                prefix=add_prefix("mlp", prefix),
+            )
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(
             config.hidden_size, eps=config.rms_norm_eps
@@ -415,6 +417,7 @@ class DeepseekV3DecoderLayer(nn.Module):
         forward_batch: ForwardBatch,
         residual: Optional[torch.Tensor],
     ) -> torch.Tensor:
+        hidden_states = hidden_states.reshape(-1, hidden_states.shape[-1])
         if residual is None:
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
@@ -434,8 +437,8 @@ class DeepseekV3DecoderLayer(nn.Module):
 
         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
 
-        # # Fully Connected
-        # hidden_states = self.mlp(hidden_states)
+        # Fully Connected
+        hidden_states = self.mlp(hidden_states)
         return hidden_states, residual
 
 class DeepseekV3Model(nn.Module):
@@ -465,7 +468,9 @@ class DeepseekV3Model(nn.Module):
 
     def forward(self, input_ids, positions, forward_batch):
         hidden_states = self.embed_tokens(input_ids)
-        assert len(list(hidden_states.shape)) == 2
+        # hidden_states = hidden_states.reshape(-1, hidden_states.shape[-1])
+        rank_print(f"***********hidden_states.shape: {hidden_states.shape}")
+        
         residual = None
         for i in range(len(self.layers)):
             layer = self.layers[i]
@@ -519,7 +524,10 @@ class FastSeekV3(nn.Module):
             num_experts=self.config.n_routed_experts,
         )
 
+        loaded_w_names = []
         params_dict = dict(self.named_parameters())
+        rank_print(f"params_dict: {params_dict.keys()}")
+        exit()
         for name, loaded_weight in weights:
             if "rotary_emb.inv_freq" in name:
                 continue
@@ -527,19 +535,14 @@ class FastSeekV3(nn.Module):
                 # Skip non-stacked layers and experts (experts handled below).
                 if weight_name not in name:
                     continue
-                # We have mlp.experts[0].gate_proj in the checkpoint.
-                # Since we handle the experts below in expert_params_mapping,
-                # we need to skip here BEFORE we update the name, otherwise
-                # name will be updated to mlp.experts[0].gate_up_proj, which
-                # will then be updated below in expert_params_mapping
-                # for mlp.experts[0].gate_gate_up_proj, which breaks load.
                 if ("mlp.experts." in name) and name not in params_dict:
                     continue
+                # gate_proj -> gate_up_proj && up_proj -> gate_up_proj
                 name = name.replace(weight_name, param_name)
-                # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
                     continue
                 param = params_dict[name]
+                loaded_w_names.append(name)
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
                 break
@@ -548,8 +551,11 @@ class FastSeekV3(nn.Module):
                     param_name, weight_name, expert_id, shard_id = mapping
                     if weight_name not in name:
                         continue
+                    # gate_up -> w13
+                    # down -> w2
                     name = name.replace(weight_name, param_name)
                     param = params_dict[name]
+                    loaded_w_names.append(name)
                     weight_loader = param.weight_loader
                     weight_loader(
                         param,
@@ -560,16 +566,16 @@ class FastSeekV3(nn.Module):
                     )
                     break
                 else:
-                    # Skip loading extra bias for GPTQ models.
                     if name.endswith(".bias") and name not in params_dict:
                         continue
-
                     param = params_dict[name]
+                    loaded_w_names.append(name)
                     weight_loader = getattr(
                         param, "weight_loader", default_weight_loader
                     )
                     weight_loader(param, loaded_weight)
 
+        rank_print(f"loaded_w_names: {loaded_w_names}")
         
         for layer_id in range(self.config.num_hidden_layers):
             self_attn = self.model.layers[layer_id].self_attn

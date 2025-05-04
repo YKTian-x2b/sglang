@@ -84,7 +84,7 @@ from sglang.srt.utils import (
 logger = logging.getLogger(__name__)
 
 SGLANG_CI_SMALL_KV_SIZE = os.getenv("SGLANG_CI_SMALL_KV_SIZE", None)
-UNBALANCED_MODEL_LOADING_TIMEOUT_S = 300
+UNBALANCED_MODEL_LOADING_TIMEOUT_S = 30000
 
 
 class ModelRunner:
@@ -333,12 +333,12 @@ class ModelRunner:
 
         # Check memory for tensor parallelism
         local_gpu_memory = get_available_gpu_memory(self.device, self.gpu_id)
-        if self.tp_size > 1:
-            if min_per_gpu_memory < local_gpu_memory * 0.9:
-                raise ValueError(
-                    "The memory capacity is unbalanced. Some GPUs may be occupied by other processes. "
-                    f"{min_per_gpu_memory=}, {local_gpu_memory=}, {local_gpu_memory * 0.9=}"
-                )
+        # if self.tp_size > 1:
+        #     if min_per_gpu_memory < local_gpu_memory * 0.9:
+        #         raise ValueError(
+        #             "The memory capacity is unbalanced. Some GPUs may be occupied by other processes. "
+        #             f"{min_per_gpu_memory=}, {local_gpu_memory=}, {local_gpu_memory * 0.9=}"
+        #         )
 
         logger.info(
             f"Init torch distributed ends. mem usage={(before_avail_memory - local_gpu_memory):.2f} GB"

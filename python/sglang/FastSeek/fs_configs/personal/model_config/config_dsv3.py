@@ -27,7 +27,9 @@ class DeepseekV3Config(PretrainedConfig):
         qk_nope_head_dim=128,
         n_group=8,
         topk_group=4,
+        num_experts_per_tok=8,
         first_k_dense_replace=3,
+        hidden_act="silu",
         norm_topk_prob=True,
         scoring_func="sigmoid",
         max_position_embeddings=4096,
@@ -57,8 +59,10 @@ class DeepseekV3Config(PretrainedConfig):
         self.qk_nope_head_dim = qk_nope_head_dim
         self.n_group = n_group
         self.topk_group = topk_group
+        self.hidden_act = hidden_act
         self.first_k_dense_replace = first_k_dense_replace
         self.norm_topk_prob = norm_topk_prob
+        self.num_experts_per_tok = num_experts_per_tok
         self.scoring_func = scoring_func
         if num_key_value_heads is None:
             num_key_value_heads = num_attention_heads

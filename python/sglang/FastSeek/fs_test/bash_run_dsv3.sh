@@ -10,11 +10,11 @@
 
 
 
-python3 run_dsv3.py --model /home/private_xgpt_repo/sglang/python/sglang/FastSeek/fs_models/model_fp8_4layer.pt \
+python3 run_dsv3_simple.py --model /home/private_xgpt_repo/sglang/python/sglang/FastSeek/fs_models/model_fp8_4layer.pt \
  --tensor-parallel-size 8 \
- --context-length 256 --cuda-graph-bs 4 \
+ --context-length 256 --cuda-graph-bs 1 \
  --mem-fraction-static 0.90 \
- --max-running-requests 4 --max-total-tokens 2048 \
- --batch-size 4 --input-len 128 --output-len 128 \
- --load-format pt \
+ --max-running-requests 1 --max-total-tokens 2048 \
+ --batch-size 1 --input-len 128 --output-len 1 \
+ --load-format pt --enable-ep-moe \
  --trust-remote-code --enable-flashinfer-mla --disable-radix-cache > /home/private_xgpt_repo/sglang/python/sglang/FastSeek/fs_logs/run_log.txt 2>&1 
