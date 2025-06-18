@@ -109,7 +109,7 @@ def import_model_classes():
                 entry.__name__ not in model_arch_name_to_cls
             ), f"Duplicated model implementation for {entry.__name__}"
             model_arch_name_to_cls[entry.__name__] = entry
-        print(f"************* dsv3 entry: {entry}")
+        # print(f"************* dsv3 entry: {entry}")
     except Exception as e:
         logger.warning(f"Ignore import error when loading {name}. " f"{e}")  
     return model_arch_name_to_cls
