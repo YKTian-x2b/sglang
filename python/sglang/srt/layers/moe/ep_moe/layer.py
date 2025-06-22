@@ -218,7 +218,9 @@ class EPMoE(torch.nn.Module):
             correction_bias=self.correction_bias,
             custom_routing_function=self.custom_routing_function,
         )
-
+        # reorder_topk_ids: (n, e) 按专家id大小顺序排列
+        # seg_indptr 专家token数前缀和
+        # src2dst: topk_ids中每个元素在reorder_topk_ids中的位置
         reorder_topk_ids, src2dst, seg_indptr = run_moe_ep_preproess(
             topk_ids, self.num_experts
         )
